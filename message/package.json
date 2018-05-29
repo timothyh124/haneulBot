@@ -1,0 +1,8 @@
+{
+    "name": "message",
+    "version": "0.0.1",
+    "dependencies": {
+          "mysql": "2.15.0",
+          "promise-mysql": "3.2.1"
+    }
+}  

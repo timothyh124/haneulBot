@@ -1,0 +1,371 @@
+  let message = ""
+  let keyboards = {
+		"basic": {
+			"type": "buttons",
+			"buttons": ["!출석여부"]
+		},
+		"greeting": {
+			"type": "buttons",
+			"buttons": ["안녕"]			
+		},
+		"attendance": {
+			"type": "buttons"
+		}
+	}
+	
+
+  // end of required variables
+	
+	/* function definitions */
+  // answer function
+  let sendAnswer = function(message, keyboard) {
+		var answer = {
+			"message":{
+				"text": message
+			}
+		}
+		if(keyboard !== null) answer.keyboard = keyboard
+	  res.send(answer)
+  };
+  // end of answer function
+	// getKeyboard function
+	let getKeyboard = function(keyboard, priv) {
+		keyboard.buttons.push("!출석현황")
+		if(priv === 'M') keyboard.buttons.push("!신의영역")
+		keyboard.buttons.push("!이름바꾸기")
+		return keyboard
+	};
+	// end of getKeyboard function
+  // getThisSundayDate function
+  let getThisSundayDate = function() {
+		let d = new Date()
+		let dateDiff = 7 - d.getDay()
+		if (dateDiff < 7) {
+			d.setDate(d.getDate() + dateDiff)
+		}
+		let year = d.getFullYear()
+		let month = d.getMonth() + 1
+		let day = d.getDate()
+		return year + "-" + ((month < 10) ? "0" +  month : month) + "-" + day 
+  };
+  // end of getThisSunday function
+  // end of function definition
+  
+	/* check if the user is registered
+	 * if the user is registered, get the basic user information
+	 */
+	// user information
+	let user = {
+		"registered": false
+	}
+	conn.query("SELECT * FROM user_info WHERE user_key=? AND registered = true"
+										,[user_key], function(e, results) {
+		if(e) console.log(e)
+		if(results.length == 1) {
+			user.name = results[0].user_name
+			user.privilege = results[0].privilege
+			user.role = results[0].role
+			console.log("found user " + user.name)	
+			keyboards.basic = getKeyboard(keyboards.basic, user.privilege)
+			user.registered = Boolean(results[0].registered)
+			console.log("this_user [registered=" + user.registered + "]") 			
+		}
+		processMessage()
+	});
+	// end of user verification
+  function processMessage() {	
+	/* process message */
+  if(type === "text") {
+	  let regexPtrn = new RegExp('^[!@#$%^&*].*$')
+		let isPrefixed = regexPtrn.test(content)
+		/* simple input test */
+		let actContent = ""
+		let prefix = ''
+		console.log("value of isPrefixed: " + isPrefixed)
+		if(isPrefixed) {
+			if(content.length > 1) {
+				actContent = content.slice(1)
+				prefix = content.charAt(0)
+			} else {
+				prefix = '!'
+			}
+		} else {
+			actContent = content
+		}
+		// end of input test
+    if(!isPrefixed) {
+			console.log("is user registered?: " + user.registered)
+			console.log("actContent: " + actContent)
+			switch(actContent) {
+				case "안녕":
+					if(user.registered) {
+						message = "안녕하세요 " + user.name + "님!\n무었을 " +
+											"도와드릴까요?"
+						sendAnswer(message, keyboards.basic)	
+		      } else {
+						console.log("im here!")
+						message = "안녕하세요!\n앞으로 하늘바라기 성가대에 관한 일을 담당할 하늘이에요.\n처음 저랑 대화 하시는 분은 이름을 등록해 주세요.\n형식: 골뱅이+이름\n예: @하늘이"
+						sendAnswer(message,null)
+					}
+		      break;
+	      default:
+					message = "무슨말인지 모르겟어요.\n"
+				  if(user.registered) {
+						message += "무었을 도와드릴까요?"
+						sendAnswer(message, keyboards.basic)
+					} else {
+					  message += "처음부터 다시 해볼까요?"
+						sendAnswer(message, keyboards.greeting)
+					}
+	        break;
+      }	 
+		
+	  } 
+		// prefixed input
+		else {
+		  let date = getThisSundayDate()
+			if(prefix === '@') {
+		    if(user.registered) {
+						message = actContent + "님 저번에 이름 알려주셧어요!\n"
+						sendAnswer(message, keyboards.basic)
+	      } else {
+		      console.log("user NOT FOUND!")
+					let initPriv = 'R' // initial privilege to give for newly registered user
+		      let qry = "INSERT INTO user_info (user_key,user_name,registered,role,privilege) " + 
+								    "VALUES (?)"
+		      let values = [[user_key, actContent, 1,'O',initPriv]]
+		      conn.query(qry, values, function (e, results) {
+		        if(e) console.log(e);
+		        console.log("new user registeration[affected row in user_info:" + results.affectedRows + "]")
+						if(results.affectedRows > 0) {
+							keyboards.basic = getKeyboard(keyboards.basic, initPriv)
+							sendAnswer(actContent + "님 등록이 완료되었습니다.\n무었을 도와드릴까요?", keyboards.basic)
+						} else {
+							sendAnswer("뭔가 잘못된것 같아요, 다시 시작해 볼까요?", keyboards.greeting)
+						}
+					});
+		    }
+	    }
+			// prefix(#) means it is a 1st level button input
+			else if(prefix === '!' && user.registered) {
+				let qry = ""
+				let values = []
+				switch(actContent) {
+					case "출석여부":
+						console.log(user_key + "::" + date)
+						qry = "SELECT * FROM attendance WHERE user_key=? AND date=?"
+						values = [user_key, date]
+						let attending = ''
+						conn.query(qry, values, function (e, results) {
+							if(e) console.log(e)
+							if(results.length == 1) {
+								attending = results[0].is_attending
+							} 
+							message = user.name + "님은 오는 일요일(" + date + ")에\n"
+							if(attending === 'T') {
+								message += "온다고 하였습니다.\n바꾸시겟습니까?"
+								keyboards.attendance.buttons = ["*아니요","*네, 못가요"]
+							} else if(attending === 'F') {
+								message += "못 온다고 하였습니다.\n바꾸시겟습니까?"
+								keyboards.attendance.buttons = ["*아니요","*네, 가요"]	
+							}	else {
+								message += "참석하실수 있으신가요?"
+								keyboards.attendance.buttons = ["*네, 가요","*아니요, 못가요"]
+							}
+							sendAnswer(message, keyboards.attendance)
+						});
+						break;
+					case "출석현황":
+						qry = "SELECT ui.user_name,ui.role,sq.is_attending FROM user_info AS ui"
+									+ " LEFT JOIN (SELECT user_key,is_attending from attendance"
+									+ " WHERE date=?) AS sq USING(user_key)"
+						values = [date]
+						let coming = []
+						let notComing = []
+						let noreply = []
+						let sCnt = 0
+						let aCnt = 0
+						let tCnt = 0
+						let bCnt = 0
+						let oCnt = 0
+						console.log("date: " + date)
+						console.log("qry: " + qry)
+						conn.query(qry, values, function(e, results) {
+							if(e) console.log(e)
+							results.forEach(function(element) {
+								let attend = 'F'
+								if(element.is_attending === null) {
+									noreply.push(element.user_name)
+								} else if(element.is_attending === 'T') {
+									coming.push(element.user_name)
+									if(element.role === 'S') {
+										++sCnt
+									} else if(element.role === 'A') {
+										++aCnt
+									} else if(element.role === 'T') {
+										++tCnt
+									} else if(element.role === 'B') {
+										++bCnt
+									} else {
+										++oCnt
+									}
+								} else if(element.is_attending === 'F') {
+									notComing.push(element.user_name)
+								} else {
+									console.log("unable to identify attendance response for user_name[" + element.user_name + "]")
+								}
+							});
+							message = "*** 출석현황(" + date + ") ***\n" +
+												"* 오는분들(" + coming.length + "명)\n" +
+												coming +"\n" +
+												"* 안오는분들(" + notComing.length + "명)\n" +
+												notComing + "\n" +
+												"* 미응답자(" + noreply.length + "명)\n" + 
+												noreply + "\n" +
+												"** 파트별 출석인원 **\n" +
+												"소프라노 " + sCnt + "명\n" +
+												"알토 " + aCnt + "명\n" +
+												"테너 " + tCnt + "명\n" +
+												"베이스 " +bCnt + "명\n" +
+												"그외 " + oCnt + "명"
+							sendAnswer(message, keyboards.basic)
+						});
+						break;
+					case "이름바꾸기":
+						sendAnswer("이름을 바꾸시려면 관리자[한승민] 에게 연락바랍니다.", keyboards.basic)
+					case "신의영역":
+						if(user.privilege === 'M') {
+							sendAnswer("[WARNING!]\nYou just activated god mode\nAvailable" +
+												 " commands...\n*list\n" +
+												 "*role[SATBCPO]]\n*privilege[RAM]]\n*name", null)
+						} else {
+							sendAnswer("You cannot wield god's power yet", keyboards.basic)
+						}
+						break;
+					default:
+						sendAnswer("무슨말인지 모르겟어요, 다시 시작해볼까요?", keyboards.basic)
+						break;
+				}
+			} else if(prefix === '*' && user.registered) {
+				let qry = "SELECT is_attending FROM attendance where user_key=? AND date=?"
+				let values = [user_key, date]
+				let responded = false
+				let respond = (actContent.indexOf(", 못가요") > -1) ? 'F' : 'T'
+				conn.query(qry, values, function(e, results) {
+					if(e) console.log(e)
+					if(results.length == 1) {
+						responded = true
+					}
+					if(responded) {
+						let qry = "UPDATE attendance SET is_attending=? where user_key=? AND date=?"
+						let values = [respond, user_key, date]
+						conn.query(qry, values, function(e, results) {
+							if(e) console.log(e)
+							console.log("user:" + user_key + " responded for date:" + date)
+						});
+					} else {
+						let qry = "INSERT INTO attendance (user_key,date,is_attending) VALUES(?)"
+						let values = [[user_key, date, respond]]
+						conn.query(qry, values, function(e, results) {
+							if(e) console.log(e)
+							console.log("user:" + user_key + " responded for date:" + date
+													+ "||affected row: " + results.affectedRows);
+						});
+					}
+					if(actContent.indexOf(", 못가요") > -1) {	
+						message = "또르르... 담음에 봐요."
+					} else if(actContent.indexOf(", 가요") > -1) {
+						message = "오는 일요일날 봐요!"
+					} else {
+						message = "알겟습니다."
+					}
+					sendAnswer(message, keyboards.basic)
+				});
+		      // other message types are not handled
+	    } else if(prefix === '$' && user.registered && user.privilege === 'M') {
+				console.log("im in godmode!")
+				let cmd = actContent.split(" ")
+				let qry = ""
+				let values = []
+				switch(cmd[0]) {
+					case "privilege":
+						qry = "UPDATE user_info SET privilege=? where user_name=?"
+						values = [cmd[2],cmd[1]]
+						conn.query(qry, values, function(e, results) {
+							if(e) {
+								console.log(e)
+								message = "Failed to update privilaege for user_name=" +
+													cmd[1]
+							} else {
+								message = "[user_name: " + cmd[1] + "] privilege is updated to" +
+													" " + cmd[2]
+								console.log(message)
+							}
+							sendAnswer(message, null)
+						});
+						break;
+					case "role":
+						qry = "UPDATE user_info SET role=? where user_name=?"
+						values = [cmd[2],cmd[1]]
+						conn.query(qry, values, function(e, results) {
+							if(e) {
+								console.log(e)
+								message = "Failed to update role for user_name=" + cmd[1]
+							} else {
+								message = "[user_name: " + cmd[1] + "] role is updated to " +
+													cmd[2]
+								console.log(message)
+							}
+							sendAnswer(message, null)
+						});
+						break;
+					case "name":
+						qry = "UPDATE user_info SET user_name=? WHERE user_name=?"
+						values = [cmd[2],cmd[1]]
+						conn.query(qry, values, function(e, results) {
+							if(e) {
+								console.log(e)
+								message = "Failed to update name for user_name=" + cmd[1] +
+													" to [" + cmd[2] + "]"
+							} else {
+								message = "[user_name: " + cmd[1] + "] is updated to " +
+													"[new user_name: " + cmd[2] + "]"
+								console.log(message)
+							}
+							sendAnswer(message, null)
+						});
+					  break;
+           case "list":
+						qry = "SELECT user_name,role,privilege from user_info where registered=?"
+						values = [1]
+						conn.query(qry, values, function(e, results) {
+							if(e) {
+								console.log(e)
+								message = "Failed to load registered users"
+							} else {
+								message += "*** Registered User List ***\n"
+								results.forEach(function(element) {
+									message += element.user_name + "[" + element.role + "] as " +
+									element.privilege + "\n"	
+								});
+								message += "*** End of the List ***"
+							}
+							sendAnswer(message,null)
+						});
+						break;
+					default:
+					  sendAnswer("Command["+ cmd[0] +"] does not exist", null)
+						break;
+				}
+			} else {
+				if(user.registered) {
+					sendAnswer("무슨말인지 모르겟어요.\n무었을 도와드릴까요?", keyboards.basic)
+				} else {
+					sendAnswer("무슨말인지 모르겟어요.\n무었을 도와드릴까요?", keyboards.greeting)
+				}
+			}
+		}
+	}
+	}
+};
+
