@@ -8,14 +8,15 @@
 
 const admin = require('firebase-admin');
 const functions = require('firebase-functions');
+admin.initializeApp(functions.config().firebase);
 
-exports.message = functions.https.onRequest((req, res) => {
-  console.log("A user opened chatroom");
-  let keyboard = {
+exports.keyboard = functions.https.onRequest((req, res) => {
+  //admin.initializeApp(functions.config().firebase);
+  let keyboardObj = {
     "type": "buttons",
 		"buttons":["안녕"]
   };
-  res.send(keyboard);
+  res.send(keyboardObj);
 });
 
 exports.message = functions.https.onRequest((req, res) => {
@@ -26,7 +27,7 @@ exports.message = functions.https.onRequest((req, res) => {
   let content = decodeURIComponent(req.body.content); // user's message
 
   /* firebase admin and db initialization */
-  admin.initializeApp(functions.config().firebase);
+  //admin.initializeApp(functions.config().firebase);
   var db = admin.firestore();
   let qry = db.collection('userInfo').where('userKey','==',user_key).get()
       .then(snapshot => {
