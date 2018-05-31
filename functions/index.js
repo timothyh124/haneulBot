@@ -10,6 +10,15 @@ const admin = require('firebase-admin');
 const functions = require('firebase-functions');
 
 exports.message = functions.https.onRequest((req, res) => {
+  console.log("A user opened chatroom");
+  let keyboard = {
+    "type": "buttons",
+		"buttons":["안녕"]
+  };
+  res.send(keyboard);
+});
+
+exports.message = functions.https.onRequest((req, res) => {
 	/* required variables */
 	// parse request
   let user_key = decodeURIComponent(req.body.user_key); // user's key
@@ -39,3 +48,5 @@ exports.message = functions.https.onRequest((req, res) => {
 	}	
 	res.send(answer)
 });
+
+
