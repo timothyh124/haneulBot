@@ -1,1 +1,5 @@
-/*/config.json
+/functions/config.json
+/firebase.json
+/functions/package.json
+/functions/node_modules/*
+/functions/.eslintrc.json
